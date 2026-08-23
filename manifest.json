@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.fabiopauli.windowcontrols",
+  "name": "Window Controls",
+  "version": "1.0.0",
+  "author": "Fabio Pauli",
+  "license": "MIT",
+  "description": "Minimize and close the focused window from the bar, and restore minimized windows from a dropdown.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Window Controls",
+    "description": "Titlebar-style minimize and close buttons for the focused window, plus a list of minimized windows.",
+    "category": "Compositor",
+    "aliases": [
+      "window",
+      "controls",
+      "minimize",
+      "minimized",
+      "close",
+      "titlebar"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "showList": true,
+      "showMinimize": true,
+      "showClose": true,
+      "hideListWhenEmpty": false,
+      "showCount": true
+    },
+    "schema": [
+      {
+        "key": "showList",
+        "type": "boolean",
+        "label": "Minimized list",
+        "description": "Show the button that lists minimized windows.",
+        "defaultValue": true
+      },
+      {
+        "key": "showMinimize",
+        "type": "boolean",
+        "label": "Minimize button",
+        "description": "Show the button that minimizes the focused window.",
+        "defaultValue": true
+      },
+      {
+        "key": "showClose",
+        "type": "boolean",
+        "label": "Close button",
+        "description": "Show the button that closes the focused window.",
+        "defaultValue": true
+      },
+      {
+        "key": "hideListWhenEmpty",
+        "type": "boolean",
+        "label": "Hide list when empty",
+        "description": "Hide the list button while nothing is minimized.",
+        "defaultValue": false
+      },
+      {
+        "key": "showCount",
+        "type": "boolean",
+        "label": "Show count",
+        "description": "Show the number of minimized windows next to the list glyph.",
+        "defaultValue": true
+      }
+    ]
+  }
+}
