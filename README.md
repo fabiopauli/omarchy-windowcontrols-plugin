@@ -8,7 +8,7 @@ The controls appear in this order:
 2. Minimize the focused window.
 3. Close the focused window.
 
-The dropdown supports Up/Down or `J`/`K`, Enter/Space to restore, `X` to close without restoring, and Escape to close the panel.
+The dropdown supports Up/Down or `J`/`K`, Enter/Space to restore, `X` to close without restoring, and Escape to close the panel. Minimize and close automatically disappear when the focused workspace has no windows.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ Then install the three shared commands and the keyboard bindings:
 ~/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/install.sh
 ```
 
-The installer copies the commands to `~/.local/bin`, updates `~/.config/hypr/bindings.lua` inside an idempotent managed block, backs up an existing bindings file before changing it, reloads Hyprland when a session is available, and runs `hyprctl configerrors`. It explicitly unbinds these combinations before assigning them, so any previous bindings on them are replaced:
+The installer copies the commands to `~/.local/bin`, adds an idempotent managed block to `~/.config/hypr/bindings.lua`, backs up an existing bindings file before changing it, reloads Hyprland when a session is available, and runs `hyprctl configerrors`. If either shortcut is already bound outside the managed block, the installer prints a warning naming the shortcut and matching binding line before adding the corresponding `hl.unbind`. When its own managed block already exists, it leaves that block untouched and skips the unbind/reload path.
 
 - `SUPER + M` — minimize the focused window
 - `SUPER + CTRL + M` — restore the most recently minimized window
@@ -73,11 +73,23 @@ All settings are boolean values on the widget's bar-layout entry.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `showList` | `true` | Show the minimized-window list button. |
-| `showMinimize` | `true` | Show the focused-window minimize button. |
-| `showClose` | `true` | Show the focused-window close button. |
-| `hideListWhenEmpty` | `false` | Hide the list button when no windows are minimized. |
+| `showList` | `true` | Show the minimized-window list button when it has a useful target. |
+| `showMinimize` | `true` | Show minimize while the focused workspace has a window. |
+| `showClose` | `true` | Show close while the focused workspace has a window. |
+| `hideListWhenEmpty` | `false` | Hide the list button when no windows are minimized; an empty focused workspace always hides an empty list. |
 | `showCount` | `true` | Show a small minimized-window count next to the menu glyph. |
+
+### Empty workspaces
+
+With the default settings, visibility follows the useful actions available:
+
+| Focused workspace | Minimized count | Bar shows |
+| --- | --- | --- |
+| Has a window | 0 | List, minimize, close |
+| Empty | Greater than 0 | List and count only |
+| Empty | 0 | Nothing |
+
+The list deliberately remains reachable from an empty workspace while windows are stashed. `showList`, `showMinimize`, `showClose`, and `showCount` can still hide their respective controls. `hideListWhenEmpty` hides an empty list on an occupied workspace; on an empty workspace the empty list is omitted regardless, because it has no action to offer. The widget host stays alive while its dropdown is open so closing the last minimized window cannot orphan the panel.
 
 ## How minimize works
 
@@ -98,7 +110,7 @@ omarchy plugin update io.github.fabiopauli.windowcontrols --yes
 ~/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/install.sh
 ```
 
-Rerunning the installer is safe and updates the installed scripts and managed binding block.
+Rerunning the installer updates the installed scripts and leaves an existing managed binding block unchanged.
 
 ## Remove
 
@@ -129,6 +141,16 @@ bin/omarchy-minimized-list --dry-run
 ```
 
 The final command queries the running compositor but does not alter the minimized stack.
+
+### Troubleshooting plugin reloads
+
+Saving a plugin file can produce `Local plugin changed, reloading` without replacing the existing widget instance. If behavior remains stale after a file change, run:
+
+```bash
+omarchy restart shell
+```
+
+IPC handlers added during a hot reload may also fail to re-register and report `Function not found`. Restart the shell before testing a new IPC method. For reload diagnostics, add temporary `console.log` calls and inspect the active Quickshell log under `$XDG_RUNTIME_DIR/quickshell/by-pid/<pid>/log.log`.
 
 ## License
 

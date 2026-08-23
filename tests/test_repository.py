@@ -109,6 +109,28 @@ class RepositoryContractTests(unittest.TestCase):
             self.assertIn(event, self.bar_widget)
         self.assertIn("interval: 30000", self.bar_widget)
 
+    def test_empty_workspace_visibility_uses_workspace_toplevels(self):
+        self.assertIn("readonly property bool workspaceEmpty:", self.bar_widget)
+        self.assertIn("Hyprland.focusedWorkspace", self.bar_widget)
+        self.assertIn("ws.toplevels.values.length === 0", self.bar_widget)
+        self.assertNotIn("ToplevelManager.activeToplevel", self.bar_widget)
+        self.assertIn(
+            "showList && (count > 0 || (!hideListWhenEmpty && !workspaceEmpty))",
+            self.bar_widget,
+        )
+        self.assertIn(
+            "visible: opened || listVisible || ((showMinimize || showClose) && !workspaceEmpty)",
+            self.bar_widget,
+        )
+        self.assertIn(
+            "visible: root.showMinimize && !root.workspaceEmpty",
+            self.bar_widget,
+        )
+        self.assertIn(
+            "visible: root.showClose && !root.workspaceEmpty",
+            self.bar_widget,
+        )
+
     def test_lua_close_dispatchers_are_used(self):
         self.assertNotIn("killactive", self.bar_widget)
         self.assertIn("hl.dispatch(hl.dsp.window.close())", self.bar_widget)
@@ -137,6 +159,9 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("~/.cache/hypr-minimized-stack", self.readme)
         self.assertIn("SUPER + M", self.readme)
         self.assertIn("SUPER + CTRL + M", self.readme)
+        self.assertIn("### Empty workspaces", self.readme)
+        self.assertIn("omarchy restart shell", self.readme)
+        self.assertIn("Function not found", self.readme)
 
 
 class MinimizedListTests(unittest.TestCase):
@@ -240,7 +265,8 @@ class InstallerTests(unittest.TestCase):
             bindings = home / ".config" / "hypr" / "bindings.lua"
             bindings.parent.mkdir(parents=True)
             bindings.write_text(
-                'o.bind("SUPER + M", "Old action", "old-command")\n'
+                'o.bind("SUPER + M", "Old minimize action", "old-minimize")\n'
+                'o.bind("SUPER + CTRL + M", "Old restore action", "old-restore")\n'
             )
 
             environment = os.environ.copy()
@@ -266,8 +292,12 @@ class InstallerTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("existing SUPER+M", first.stderr)
+            self.assertIn("WARNING: Window Controls will take over SUPER + M", first.stderr)
+            self.assertIn("Old minimize action", first.stderr)
+            self.assertIn("WARNING: Window Controls will take over SUPER + CTRL + M", first.stderr)
+            self.assertIn("Old restore action", first.stderr)
             self.assertIn('hl.unbind("SUPER + M")', first_content)
+            self.assertIn('hl.unbind("SUPER + CTRL + M")', first_content)
             self.assertEqual(first_content, bindings.read_text())
             self.assertEqual(len(first_backups), 1)
             self.assertEqual(
@@ -275,10 +305,46 @@ class InstallerTests(unittest.TestCase):
                 list(bindings.parent.glob("bindings.lua.bak.*")),
             )
             self.assertNotIn("Backed up bindings", second.stdout)
+            self.assertIn("existing managed keybindings left unchanged", second.stdout)
+            self.assertEqual(second.stderr, "")
             for program in PROGRAMS:
                 installed = home / ".local" / "bin" / program
                 self.assertTrue(installed.is_file())
                 self.assertTrue(installed.stat().st_mode & stat.S_IXUSR)
+
+    def test_install_without_conflicts_does_not_add_unbinds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            fake_bin = home / "fake-bin"
+            fake_bin.mkdir()
+            fake_hyprctl = fake_bin / "hyprctl"
+            fake_hyprctl.write_text("#!/bin/sh\nexit 64\n")
+            fake_hyprctl.chmod(0o755)
+
+            bindings = home / ".config" / "hypr" / "bindings.lua"
+            bindings.parent.mkdir(parents=True)
+            bindings.write_text(
+                'o.bind("SUPER + B", "Browser", "browser-command")\n'
+            )
+
+            environment = os.environ.copy()
+            environment["HOME"] = str(home)
+            environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+            environment.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+
+            result = subprocess.run(
+                [ROOT / "install.sh"],
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            content = bindings.read_text()
+            self.assertNotIn("hl.unbind", content)
+            self.assertIn('o.bind("SUPER + M"', content)
+            self.assertIn('o.bind("SUPER + CTRL + M"', content)
+            self.assertEqual(result.stderr, "")
 
 
 if __name__ == "__main__":

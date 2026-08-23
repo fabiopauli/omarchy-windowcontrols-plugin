@@ -45,21 +45,21 @@
         "key": "showMinimize",
         "type": "boolean",
         "label": "Minimize button",
-        "description": "Show the button that minimizes the focused window.",
+        "description": "Show the minimize button while the focused workspace has a window.",
         "defaultValue": true
       },
       {
         "key": "showClose",
         "type": "boolean",
         "label": "Close button",
-        "description": "Show the button that closes the focused window.",
+        "description": "Show the close button while the focused workspace has a window.",
         "defaultValue": true
       },
       {
         "key": "hideListWhenEmpty",
         "type": "boolean",
         "label": "Hide list when empty",
-        "description": "Hide the list button while nothing is minimized.",
+        "description": "Hide an empty list on occupied workspaces; empty workspaces always omit an empty list.",
         "defaultValue": false
       },
       {

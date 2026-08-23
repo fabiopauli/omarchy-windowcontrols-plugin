@@ -34,10 +34,27 @@ BarWidget {
   readonly property bool showClose: setting("showClose", true) !== false
   readonly property bool hideListWhenEmpty: setting("hideListWhenEmpty", false) === true
   readonly property bool showCount: setting("showCount", true) !== false
-  readonly property bool listVisible: showList && (count > 0 || !hideListWhenEmpty)
+
+  // Nothing on the focused workspace means nothing to minimize or close, so
+  // those controls are hidden rather than left dead. Use the workspace's
+  // toplevel list instead of the active toplevel: opening this widget's layer
+  // surface takes keyboard focus, but does not make the workspace unoccupied.
+  readonly property bool workspaceEmpty: {
+    var ws = Hyprland.focusedWorkspace
+    if (!ws || !ws.toplevels) return true
+    return ws.toplevels.values.length === 0
+  }
+
+  // An empty workspace with stashed windows is exactly when the dropdown is
+  // useful, so the list survives there and disappears only when it is empty.
+  readonly property bool listVisible: showList && (count > 0 || (!hideListWhenEmpty && !workspaceEmpty))
 
   implicitWidth: layout.implicitWidth
   implicitHeight: layout.implicitHeight
+
+  // Avoid reserving inter-widget spacing when no control can be shown. Keep
+  // the host alive while its panel is open so the popup is never orphaned.
+  visible: opened || listVisible || ((showMinimize || showClose) && !workspaceEmpty)
 
   readonly property string countTooltip: count === 0
     ? "No minimized windows"
@@ -179,7 +196,7 @@ BarWidget {
     }
 
     BarIconButton {
-      visible: root.showMinimize
+      visible: root.showMinimize && !root.workspaceEmpty
       bar: root.bar
       text: "󰖰" // MDI window-minimize
       tooltipText: "Minimize window\nSUPER + M"
@@ -192,7 +209,7 @@ BarWidget {
     }
 
     BarIconButton {
-      visible: root.showClose
+      visible: root.showClose && !root.workspaceEmpty
       bar: root.bar
       text: "󰖭" // MDI window-close
       tooltipText: "Close window"
