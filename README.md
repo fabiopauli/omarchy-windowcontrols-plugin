@@ -120,7 +120,36 @@ Remove the bar plugin with Omarchy:
 omarchy plugin remove io.github.fabiopauli.windowcontrols --yes
 ```
 
-Omarchy removes the plugin checkout and its `shell.json` entry. The separately installed commands, managed block in `~/.config/hypr/bindings.lua`, and `~/.cache/hypr-minimized-stack` remain until you choose to remove them.
+Omarchy removes the plugin checkout and its `shell.json` entry. To also undo the changes made by `install.sh`:
+
+1. Remove these three commands from `~/.local/bin`:
+
+   ```bash
+   rm -f ~/.local/bin/omarchy-minimize \
+     ~/.local/bin/omarchy-restore-minimized \
+     ~/.local/bin/omarchy-minimized-list
+   ```
+
+2. Open `~/.config/hypr/bindings.lua` and delete the complete managed block from this line:
+
+   ```lua
+   -- BEGIN io.github.fabiopauli.windowcontrols (managed by install.sh)
+   ```
+
+   through this line, inclusive:
+
+   ```lua
+   -- END io.github.fabiopauli.windowcontrols
+   ```
+
+3. Reload and validate Hyprland:
+
+   ```bash
+   hyprctl reload
+   hyprctl configerrors
+   ```
+
+The optional runtime history file can also be removed with `rm -f ~/.cache/hypr-minimized-stack`.
 
 ## Security and privacy
 
