@@ -9,13 +9,17 @@ import qs.Ui
 // close act on the focused window, and the list button opens a dropdown of
 // everything currently minimized.
 //
-// "Minimized" is not a Hyprland concept. The shared command-line tools park
+// "Minimized" is not a Hyprland concept. The bundled command-line tools park
 // windows on special:minimized and remember their origin workspace in
-// ~/.cache/hypr-minimized-stack. Both the bar and the keybindings invoke those
-// same tools, so they share one definition of minimized state.
+// ~/.cache/hypr-minimized-stack. Both the bar and optional keybindings invoke
+// those same files, so they share one definition of minimized state.
 BarWidget {
   id: root
   moduleName: "io.github.fabiopauli.windowcontrols"
+
+  readonly property string minimizeScript: localPath(Qt.resolvedUrl("bin/omarchy-minimize"))
+  readonly property string listScript: localPath(Qt.resolvedUrl("bin/omarchy-minimized-list"))
+  readonly property string restoreScript: localPath(Qt.resolvedUrl("bin/omarchy-restore-minimized"))
 
   // Bar.findPanelWidget requires open/close/opened on the widget root.
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
@@ -60,6 +64,14 @@ BarWidget {
     ? "No minimized windows"
     : (count === 1 ? "1 minimized window" : count + " minimized windows")
 
+  // Qt.resolvedUrl is relative to this QML file. Convert its file URL to the
+  // absolute local path expected by Process and the shell used by bar.run().
+  function localPath(url) {
+    var value = String(url || "")
+    if (value.indexOf("file://") === 0) value = value.substring(7)
+    try { return decodeURIComponent(value) } catch (error) { return value }
+  }
+
   function refresh() {
     if (listProc.running) return
     listProc.running = true
@@ -89,7 +101,7 @@ BarWidget {
 
   function restore(address) {
     if (!root.bar || !validAddress(address)) return
-    root.bar.run("omarchy-restore-minimized " + address)
+    root.bar.run(Util.shellQuote(root.restoreScript) + " " + Util.shellQuote(address))
     refreshSoon.restart()
   }
 
@@ -127,7 +139,7 @@ BarWidget {
 
   Process {
     id: listProc
-    command: ["omarchy-minimized-list"]
+    command: [root.listScript]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyList(text)
@@ -203,7 +215,7 @@ BarWidget {
       useActiveColor: false
       onPressed: function(mouseButton) {
         if (mouseButton !== Qt.LeftButton) return
-        if (root.bar) root.bar.run("omarchy-minimize")
+        if (root.bar) root.bar.run(Util.shellQuote(root.minimizeScript))
         refreshSoon.restart()
       }
     }

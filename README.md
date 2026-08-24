@@ -19,27 +19,29 @@ The dropdown supports Up/Down or `J`/`K`, Enter/Space to restore, `X` to close w
 
 ## Install
 
-Add and enable the plugin:
-
 ```bash
 omarchy plugin add https://github.com/fabiopauli/omarchy-windowcontrols-plugin.git --enable
 ```
 
-Then install the three shared commands and the keyboard bindings:
+## Optional keyboard shortcuts
 
-```bash
-~/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/install.sh
+The bar controls work fully without keyboard shortcuts. To add `SUPER + M` for minimize and `SUPER + CTRL + M` for restoring the most recently minimized window, paste this block into `~/.config/hypr/bindings.lua`:
+
+```lua
+-- BEGIN io.github.fabiopauli.windowcontrols optional keybindings
+local windowcontrols_bin = os.getenv("HOME") .. "/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/bin"
+hl.unbind("SUPER + M")
+hl.unbind("SUPER + CTRL + M")
+o.bind("SUPER + M", "Minimize window", windowcontrols_bin .. "/omarchy-minimize")
+o.bind("SUPER + CTRL + M", "Restore last minimized window", windowcontrols_bin .. "/omarchy-restore-minimized")
+-- END io.github.fabiopauli.windowcontrols optional keybindings
 ```
 
-The installer copies the commands to `~/.local/bin`, adds an idempotent managed block to `~/.config/hypr/bindings.lua`, backs up an existing bindings file before changing it, reloads Hyprland when a session is available, and runs `hyprctl configerrors`. If either shortcut is already bound outside the managed block, the installer prints a warning naming the shortcut and matching binding line before adding the corresponding `hl.unbind`. When its own managed block already exists, it leaves that block untouched and skips the unbind/reload path.
-
-- `SUPER + M` — minimize the focused window
-- `SUPER + CTRL + M` — restore the most recently minimized window
-
-Preview the installer without writing anything:
+The `hl.unbind` lines deliberately replace existing assignments for those shortcuts. Choose different keys instead if you want to preserve existing bindings. Reload and validate Hyprland after editing:
 
 ```bash
-~/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/install.sh --dry-run
+hyprctl reload
+hyprctl configerrors
 ```
 
 ## shell.json
@@ -99,7 +101,7 @@ Hyprland has no native minimized state. This plugin uses one explicit convention
 - `omarchy-minimized-list` asks Hyprland which windows are actually on `special:minimized`. The stack contributes only newest-first ordering and each window's origin workspace. Stale stack entries are pruned, so a closed or manually moved window cannot linger in the dropdown.
 - `omarchy-restore-minimized [address]` checks that authoritative list, returns the selected window to its recorded workspace (or the active workspace when no origin is known), and focuses it. With no address it restores the newest minimized window.
 
-The bar buttons and the installed keyboard bindings execute these same scripts. `omarchy-minimized-list --dry-run` prints the real list without pruning the stack file.
+The bar buttons and optional keyboard bindings execute the scripts bundled in the plugin's `bin/` directory. `omarchy-minimized-list --dry-run` prints the real list without pruning the stack file.
 
 The close controls use Omarchy's Lua dispatchers. The focused close action evaluates `hl.dispatch(hl.dsp.window.close())`; a dropdown row targets `hl.dsp.window.close({ window = "address:0x..." })` directly.
 
@@ -107,10 +109,7 @@ The close controls use Omarchy's Lua dispatchers. The focused close action evalu
 
 ```bash
 omarchy plugin update io.github.fabiopauli.windowcontrols --yes
-~/.config/omarchy/plugins/io.github.fabiopauli.windowcontrols/install.sh
 ```
-
-Rerunning the installer updates the installed scripts and leaves an existing managed binding block unchanged.
 
 ## Remove
 
@@ -120,50 +119,21 @@ Remove the bar plugin with Omarchy:
 omarchy plugin remove io.github.fabiopauli.windowcontrols --yes
 ```
 
-Omarchy removes the plugin checkout and its `shell.json` entry. To also undo the changes made by `install.sh`:
-
-1. Remove these three commands from `~/.local/bin`:
-
-   ```bash
-   rm -f ~/.local/bin/omarchy-minimize \
-     ~/.local/bin/omarchy-restore-minimized \
-     ~/.local/bin/omarchy-minimized-list
-   ```
-
-2. Open `~/.config/hypr/bindings.lua` and delete the complete managed block from this line:
-
-   ```lua
-   -- BEGIN io.github.fabiopauli.windowcontrols (managed by install.sh)
-   ```
-
-   through this line, inclusive:
-
-   ```lua
-   -- END io.github.fabiopauli.windowcontrols
-   ```
-
-3. Reload and validate Hyprland:
-
-   ```bash
-   hyprctl reload
-   hyprctl configerrors
-   ```
-
-The optional runtime history file can also be removed with `rm -f ~/.cache/hypr-minimized-stack`.
+Omarchy removes the plugin checkout and its `shell.json` entry. If you added the optional keyboard shortcuts, also delete the block between the `BEGIN` and `END` comments above from `~/.config/hypr/bindings.lua`, then run `hyprctl reload`. The optional runtime history file can be removed with `rm -f ~/.cache/hypr-minimized-stack`.
 
 ## Security and privacy
 
-Omarchy plugins run unsandboxed. This plugin executes the three documented local commands plus `hyprctl eval` for close actions. It does not use the network, elevate privileges, or inspect window contents. Window titles and classes returned by Hyprland are rendered as plain text. Window addresses are accepted only in Hyprland's hexadecimal `0x...` form before they are used in commands.
+Omarchy plugins run unsandboxed. This plugin executes its three bundled scripts plus `hyprctl eval` for close actions. It does not use the network, elevate privileges, or inspect window contents. Window titles and classes returned by Hyprland are rendered as plain text. Window addresses are accepted only in Hyprland's hexadecimal `0x...` form before they are used in commands.
 
-The installer writes only `~/.local/bin/omarchy-{minimize,restore-minimized,minimized-list}` and a marked block in `~/.config/hypr/bindings.lua`; it creates a backup before changing an existing bindings file. The runtime state file is `~/.cache/hypr-minimized-stack`.
+Installation writes nothing outside the plugin directory. At runtime, the scripts write only the state file `~/.cache/hypr-minimized-stack`.
 
-Review [`BarWidget.qml`](BarWidget.qml), [`MinimizedPanel.qml`](MinimizedPanel.qml), [`bin/`](bin/), and [`install.sh`](install.sh) before installation.
+Review [`BarWidget.qml`](BarWidget.qml), [`MinimizedPanel.qml`](MinimizedPanel.qml), and [`bin/`](bin/) before installation.
 
 ## Development
 
 ```bash
 python -m json.tool manifest.json >/dev/null
-shellcheck install.sh bin/*
+shellcheck bin/*
 python -m unittest discover -s tests -v
 omarchy plugin validate .
 bin/omarchy-minimized-list --dry-run

@@ -22,7 +22,6 @@ class RepositoryContractTests(unittest.TestCase):
         self.manifest = json.loads((ROOT / "manifest.json").read_text())
         self.bar_widget = (ROOT / "BarWidget.qml").read_text()
         self.panel = (ROOT / "MinimizedPanel.qml").read_text()
-        self.installer = (ROOT / "install.sh").read_text()
         self.readme = (ROOT / "README.md").read_text()
 
     def test_manifest_identity_is_reverse_dns(self):
@@ -61,7 +60,6 @@ class RepositoryContractTests(unittest.TestCase):
             "manifest.json",
             "BarWidget.qml",
             "MinimizedPanel.qml",
-            "install.sh",
         ):
             with self.subTest(filename=filename):
                 self.assertTrue((ROOT / filename).is_file())
@@ -142,14 +140,25 @@ class RepositoryContractTests(unittest.TestCase):
             closing_region = self.panel[match.start() : match.start() + 700]
             self.assertIn("textFormat: Text.PlainText", closing_region)
 
-    def test_installer_owns_scripts_and_bindings_but_not_shell_json(self):
-        for program in PROGRAMS:
-            self.assertIn(program, self.installer)
-        self.assertIn('hl.unbind("SUPER + M")', self.installer)
-        self.assertIn('hl.unbind("SUPER + CTRL + M")', self.installer)
-        self.assertIn('o.bind("SUPER + M"', self.installer)
-        self.assertIn('o.bind("SUPER + CTRL + M"', self.installer)
-        self.assertNotIn("$HOME/.config/omarchy/shell.json", self.installer)
+    def test_widget_invokes_only_bundled_scripts(self):
+        expected_paths = {
+            "minimizeScript": "bin/omarchy-minimize",
+            "listScript": "bin/omarchy-minimized-list",
+            "restoreScript": "bin/omarchy-restore-minimized",
+        }
+        for property_name, relative_path in expected_paths.items():
+            with self.subTest(program=relative_path):
+                self.assertIn(
+                    f'{property_name}: localPath(Qt.resolvedUrl("{relative_path}"))',
+                    self.bar_widget,
+                )
+
+        self.assertIn("command: [root.listScript]", self.bar_widget)
+        self.assertIn("Util.shellQuote(root.restoreScript)", self.bar_widget)
+        self.assertIn("Util.shellQuote(root.minimizeScript)", self.bar_widget)
+        self.assertNotIn('command: ["omarchy-minimized-list"]', self.bar_widget)
+        self.assertNotIn('root.bar.run("omarchy-restore-minimized ', self.bar_widget)
+        self.assertNotIn('root.bar.run("omarchy-minimize")', self.bar_widget)
 
     def test_readme_documents_install_settings_and_convention(self):
         for key in self.manifest["barWidget"]["defaults"]:
@@ -250,102 +259,6 @@ class MinimizedListTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual([item["address"] for item in payload], ["0xaaa", "0xbbb"])
         self.assertEqual(self.stack.read_text(), "0xbbb 2\n0xaaa 4\n")
-
-
-class InstallerTests(unittest.TestCase):
-    def test_install_is_idempotent_in_an_isolated_home(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            home = Path(temporary)
-            fake_bin = home / "fake-bin"
-            fake_bin.mkdir()
-            fake_hyprctl = fake_bin / "hyprctl"
-            fake_hyprctl.write_text("#!/bin/sh\nexit 64\n")
-            fake_hyprctl.chmod(0o755)
-
-            bindings = home / ".config" / "hypr" / "bindings.lua"
-            bindings.parent.mkdir(parents=True)
-            bindings.write_text(
-                'o.bind("SUPER + M", "Old minimize action", "old-minimize")\n'
-                'o.bind("SUPER + CTRL + M", "Old restore action", "old-restore")\n'
-            )
-
-            environment = os.environ.copy()
-            environment["HOME"] = str(home)
-            environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
-            environment.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
-
-            first = subprocess.run(
-                [ROOT / "install.sh"],
-                env=environment,
-                text=True,
-                capture_output=True,
-                check=True,
-            )
-            first_content = bindings.read_text()
-            first_backups = list(bindings.parent.glob("bindings.lua.bak.*"))
-
-            second = subprocess.run(
-                [ROOT / "install.sh"],
-                env=environment,
-                text=True,
-                capture_output=True,
-                check=True,
-            )
-
-            self.assertIn("WARNING: Window Controls will take over SUPER + M", first.stderr)
-            self.assertIn("Old minimize action", first.stderr)
-            self.assertIn("WARNING: Window Controls will take over SUPER + CTRL + M", first.stderr)
-            self.assertIn("Old restore action", first.stderr)
-            self.assertIn('hl.unbind("SUPER + M")', first_content)
-            self.assertIn('hl.unbind("SUPER + CTRL + M")', first_content)
-            self.assertEqual(first_content, bindings.read_text())
-            self.assertEqual(len(first_backups), 1)
-            self.assertEqual(
-                first_backups,
-                list(bindings.parent.glob("bindings.lua.bak.*")),
-            )
-            self.assertNotIn("Backed up bindings", second.stdout)
-            self.assertIn("existing managed keybindings left unchanged", second.stdout)
-            self.assertEqual(second.stderr, "")
-            for program in PROGRAMS:
-                installed = home / ".local" / "bin" / program
-                self.assertTrue(installed.is_file())
-                self.assertTrue(installed.stat().st_mode & stat.S_IXUSR)
-
-    def test_install_without_conflicts_does_not_add_unbinds(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            home = Path(temporary)
-            fake_bin = home / "fake-bin"
-            fake_bin.mkdir()
-            fake_hyprctl = fake_bin / "hyprctl"
-            fake_hyprctl.write_text("#!/bin/sh\nexit 64\n")
-            fake_hyprctl.chmod(0o755)
-
-            bindings = home / ".config" / "hypr" / "bindings.lua"
-            bindings.parent.mkdir(parents=True)
-            bindings.write_text(
-                'o.bind("SUPER + B", "Browser", "browser-command")\n'
-            )
-
-            environment = os.environ.copy()
-            environment["HOME"] = str(home)
-            environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
-            environment.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
-
-            result = subprocess.run(
-                [ROOT / "install.sh"],
-                env=environment,
-                text=True,
-                capture_output=True,
-                check=True,
-            )
-
-            content = bindings.read_text()
-            self.assertNotIn("hl.unbind", content)
-            self.assertIn('o.bind("SUPER + M"', content)
-            self.assertIn('o.bind("SUPER + CTRL + M"', content)
-            self.assertEqual(result.stderr, "")
-
 
 if __name__ == "__main__":
     unittest.main()
