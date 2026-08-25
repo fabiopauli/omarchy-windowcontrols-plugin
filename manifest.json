@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.fabiopauli.windowcontrols",
   "name": "Window Controls",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Fabio Pauli",
   "license": "MIT",
   "description": "Minimize and close the focused window from the bar, and restore minimized windows from a dropdown.",

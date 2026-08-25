@@ -4,9 +4,11 @@
 #   omarchy-restore-minimized                 # newest minimized window
 #   omarchy-restore-minimized 0xADDRESS       # a specific minimized window
 set -euo pipefail
+export LC_ALL=C
 
-STATE_FILE="$HOME/.cache/hypr-minimized-stack"
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+STATE_HELPER="$SCRIPT_DIR/windowcontrols_state.py"
+MAX_COMPOSITOR_BYTES=$((256 * 1024))
 target="${1:-}"
 
 if (( $# > 1 )); then
@@ -14,7 +16,7 @@ if (( $# > 1 )); then
   exit 2
 fi
 
-if [[ -n $target && ! $target =~ ^0x[0-9A-Fa-f]+$ ]]; then
+if [[ -n $target && ! $target =~ ^0x[0-9A-Fa-f]{1,16}$ ]]; then
   printf '%s: invalid window address: %s\n' "${0##*/}" "$target" >&2
   exit 2
 fi
@@ -32,21 +34,33 @@ else
     <<<"$windows" >/dev/null || exit 0
 fi
 
-# Use the most recently recorded origin. A hand-parked window has no stack
-# record, so return it to the workspace currently in front of the user.
-ws=$(awk -v address="$addr" '$1 == address { workspace = $2 } END { if (workspace != "") print workspace }' \
-  "$STATE_FILE" 2>/dev/null || true)
-[[ -n $ws ]] || ws=$(hyprctl activeworkspace -j | jq -r '.id')
-
-if [[ -f $STATE_FILE ]]; then
-  state_tmp=$(mktemp "${STATE_FILE}.tmp.XXXXXX")
-  trap 'rm -f -- "${state_tmp:-}"' EXIT
-  awk -v address="$addr" '$1 != address' "$STATE_FILE" >"$state_tmp"
-  mv -f -- "$state_tmp" "$STATE_FILE"
-  trap - EXIT
+# Use the most recently recorded, strictly validated origin. A hand-parked
+# window has no record, so return it to the workspace in front of the user.
+ws=$("$STATE_HELPER" take "$addr")
+if [[ -z $ws ]]; then
+  active_workspace=$(set -o pipefail; timeout 2s hyprctl activeworkspace -j | head -c "$((MAX_COMPOSITOR_BYTES + 1))") || {
+    printf '%s: could not read the active workspace safely\n' "${0##*/}" >&2
+    exit 1
+  }
+  if (( ${#active_workspace} > MAX_COMPOSITOR_BYTES )); then
+    printf '%s: active-workspace response exceeds the safety limit\n' "${0##*/}" >&2
+    exit 1
+  fi
+  ws=$(jq -er '
+    select(type == "object")
+    | .id
+    | select(type == "number" and . == floor and . >= -2147483648 and . <= 2147483647)
+    | tostring
+  ' <<<"$active_workspace")
 fi
 
-hyprctl eval "
+if [[ ! $ws =~ ^-?(0|[1-9][0-9]{0,9})$ ]]; then
+  printf '%s: invalid workspace id in state\n' "${0##*/}" >&2
+  exit 1
+fi
+
+timeout 2s hyprctl eval "
+hl.dispatch(hl.dsp.window.tag({ tag = \"-omarchy_windowcontrols_origin_$ws\", window = \"address:$addr\" }))
 hl.dispatch(hl.dsp.window.move({ window = \"address:$addr\", workspace = \"$ws\", follow = false }))
 hl.dispatch(hl.dsp.focus({ window = \"address:$addr\" }))
 " >/dev/null

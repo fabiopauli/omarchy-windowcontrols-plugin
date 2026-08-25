@@ -15,7 +15,8 @@ The dropdown supports Up/Down or `J`/`K`, Enter/Space to restore, `X` to close w
 - Omarchy Quattro with its Lua-based Hyprland configuration
 - `hyprctl`
 - `jq`
-- the standard `awk`, `cut`, `sort`, and `tac` command-line tools
+- `python3`
+- `timeout` (GNU coreutils)
 
 ## Install
 
@@ -97,9 +98,9 @@ The list deliberately remains reachable from an empty workspace while windows ar
 
 Hyprland has no native minimized state. This plugin uses one explicit convention:
 
-- `omarchy-minimize` appends `<address> <workspace-id>` to `~/.cache/hypr-minimized-stack`, then moves the focused window to `special:minimized` without following it.
-- `omarchy-minimized-list` asks Hyprland which windows are actually on `special:minimized`. The stack contributes only newest-first ordering and each window's origin workspace. Stale stack entries are pruned, so a closed or manually moved window cannot linger in the dropdown.
-- `omarchy-restore-minimized [address]` checks that authoritative list, returns the selected window to its recorded workspace (or the active workspace when no origin is known), and focuses it. With no address it restores the newest minimized window.
+- `omarchy-minimize` atomically tags the focused window with its numeric origin workspace and moves it to `special:minimized` without following it. The bounded state file `~/.cache/hypr-minimized-stack` mirrors `<address> <workspace-id>` for newest-first ordering and restoration.
+- `omarchy-minimized-list` asks Hyprland which windows are actually on `special:minimized`, imports strictly validated origin tags while holding the state lock, and prunes stale ordering records. A closed or manually moved window therefore cannot linger in the dropdown.
+- `omarchy-restore-minimized [address]` checks that authoritative list, removes the plugin's origin tag, returns the selected window to its recorded workspace (or the active workspace when no origin is known), and focuses it. With no address it restores the newest minimized window.
 
 The bar buttons and optional keyboard bindings execute the scripts bundled in the plugin's `bin/` directory. `omarchy-minimized-list --dry-run` prints the real list without pruning the stack file.
 
@@ -125,7 +126,7 @@ Omarchy removes the plugin checkout and its `shell.json` entry. If you added the
 
 Omarchy plugins run unsandboxed. This plugin executes its three bundled scripts plus `hyprctl eval` for close actions. It does not use the network, elevate privileges, or inspect window contents. Window titles and classes returned by Hyprland are rendered as plain text. Window addresses are accepted only in Hyprland's hexadecimal `0x...` form before they are used in commands.
 
-Installation writes nothing outside the plugin directory. At runtime, the scripts write only the state file `~/.cache/hypr-minimized-stack`.
+Installation writes nothing outside the plugin directory. At runtime, the scripts write only the state file `~/.cache/hypr-minimized-stack`. A bundled helper opens that file without following symlinks, rejects non-regular, non-owned, multiply linked, locked, or oversized state, and accepts only hexadecimal window addresses and signed 32-bit workspace IDs. Compositor responses, window cardinality, window metadata, and the JSON sent to the bar are bounded before collection.
 
 Review [`BarWidget.qml`](BarWidget.qml), [`MinimizedPanel.qml`](MinimizedPanel.qml), and [`bin/`](bin/) before installation.
 
@@ -133,7 +134,8 @@ Review [`BarWidget.qml`](BarWidget.qml), [`MinimizedPanel.qml`](MinimizedPanel.q
 
 ```bash
 python -m json.tool manifest.json >/dev/null
-shellcheck bin/*
+shellcheck bin/omarchy-*
+python -m py_compile bin/windowcontrols_state.py
 python -m unittest discover -s tests -v
 omarchy plugin validate .
 bin/omarchy-minimized-list --dry-run

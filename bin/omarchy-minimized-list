@@ -3,7 +3,8 @@
 # newest first. The stack supplies ordering and origin workspaces only.
 set -euo pipefail
 
-STATE_FILE="$HOME/.cache/hypr-minimized-stack"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+STATE_HELPER="$SCRIPT_DIR/windowcontrols_state.py"
 dry_run=0
 
 case "${1:-}" in
@@ -25,40 +26,6 @@ if (( $# > 1 )); then
   exit 2
 fi
 
-clients=$(hyprctl clients -j)
-live=$(jq -r '.[] | select(.workspace.name == "special:minimized") | .address' <<<"$clients")
-pruned=""
-
-if [[ -f $STATE_FILE ]]; then
-  # Keep only live addresses and only the newest stack entry per address.
-  pruned=$(printf '%s\n' "$live" | awk '
-    NR == FNR { if ($0 != "") alive[$0] = 1; next }
-    $1 in alive { keep[$1] = $0; order[$1] = FNR }
-    END { for (address in keep) print order[address] "\t" keep[address] }
-  ' - "$STATE_FILE" | sort -n | cut -f2-)
-
-  if (( ! dry_run )); then
-    state_tmp=$(mktemp "${STATE_FILE}.tmp.XXXXXX")
-    trap 'rm -f -- "${state_tmp:-}"' EXIT
-    if [[ -n $pruned ]]; then
-      printf '%s\n' "$pruned" >"$state_tmp"
-    else
-      : >"$state_tmp"
-    fi
-    mv -f -- "$state_tmp" "$STATE_FILE"
-    trap - EXIT
-  fi
-fi
-
-order=$(awk '{print $1}' <<<"$pruned" | tac)
-
-jq -c --arg order "$order" '
-  ($order | split("\n") | map(select(length > 0))) as $ord
-  | map(select(.workspace.name == "special:minimized")
-        | {address, class, title, pid, initialClass, initialTitle})
-  | . as $wins
-  | (map(.address)) as $addrs
-  | ([$ord[] | select(. as $address | $addrs | index($address))]
-     + [$addrs[] | select(. as $address | $ord | index($address) | not)]) as $sorted
-  | [$sorted[] as $address | ($wins[] | select(.address == $address))]
-' <<<"$clients"
+args=(list)
+(( dry_run )) && args+=(--dry-run)
+exec "$STATE_HELPER" "${args[@]}"

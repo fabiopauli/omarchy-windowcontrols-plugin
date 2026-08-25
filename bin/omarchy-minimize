@@ -3,14 +3,5 @@
 # special:minimized workspace. Paired with omarchy-restore-minimized.
 set -euo pipefail
 
-mkdir -p -- "$HOME/.cache"
-
-hyprctl eval '
-local w = hl.get_active_window()
-if w then
-  local f = assert(io.open(os.getenv("HOME") .. "/.cache/hypr-minimized-stack", "a"))
-  f:write(w.address .. " " .. tostring(w.workspace.id) .. "\n")
-  f:close()
-  hl.dispatch(hl.dsp.window.move({ window = "address:" .. w.address, workspace = "special:minimized", follow = false }))
-end
-' >/dev/null
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+exec "$SCRIPT_DIR/windowcontrols_state.py" minimize
